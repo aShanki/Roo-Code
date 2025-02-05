@@ -2,7 +2,10 @@ import fs from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
 
-import simpleGit, { CommitResult, SimpleGit, VersionResult, CleanOptions } from "simple-git"
+import debug from "debug"
+import simpleGit, { SimpleGit, CleanOptions } from "simple-git"
+
+debug.enable("simple-git")
 
 export interface Checkpoint {
 	hash: string
@@ -22,34 +25,36 @@ export type CheckpointServiceOptions = {
  * current VSCode workspace each time a Roo Code tool is executed. It uses Git
  * under the hood.
  *
- * It maintains two branches:
- * - A main branch for normal operation (the branch you are currently on).
- * - A hidden branch for storing checkpoints.
+ * HOW IT WORKS
  *
- * How it works:
- * 1. When saving a checkpoint:
- *    - Current changes are stashed (including untracked files).
- *    - The hidden branch is reset to match main.
- *    - Stashed changes are applied and committed as a checkpoint on the hidden
- *      branch.
- *    - We return to the main branch with the original state restored.
+ * Two branches are used:
+ *  - A main branch for normal operation (the branch you are currently on).
+ *  - A hidden branch for storing checkpoints.
  *
- * 2. When restoring a checkpoint:
- *    - The workspace is restored to the state of the specified checkpoint using
- *      `git restore` and `git clean`.
+ * Saving a checkpoint:
+ *  - Current changes are stashed (including untracked files).
+ *  - The hidden branch is reset to match main.
+ *  - Stashed changes are applied and committed as a checkpoint on the hidden
+ *    branch.
+ *  - We return to the main branch with the original state restored.
+ *
+ * Restoring a checkpoint:
+ *  - The workspace is restored to the state of the specified checkpoint using
+ *    `git restore` and `git clean`.
  *
  * This approach allows for:
- * - Non-destructive version control (main branch remains untouched).
- * - Preservation of the full history of checkpoints.
- * - Safe restoration to any previous checkpoint.
+ *  - Non-destructive version control (main branch remains untouched).
+ *  - Preservation of the full history of checkpoints.
+ *  - Safe restoration to any previous checkpoint.
  *
- * Notes:
- * - Git must be installed.
- * - If the current working directory is not a Git repository, we will
- *   initialize a new one with a .gitkeep file.
- * - If you manually edit files and then restore a checkpoint, the changes
- *   will be lost. Addressing this adds some complexity to the implementation
- *   and it's not clear whether it's worth it.
+ * NOTES
+ *
+ *  - Git must be installed.
+ *  - If the current working directory is not a Git repository, we will
+ *    initialize a new one with a .gitkeep file.
+ *  - If you manually edit files and then restore a checkpoint, the changes
+ *    will be lost. Addressing this adds some complexity to the implementation
+ *    and it's not clear whether it's worth it.
  */
 
 export class CheckpointService {
@@ -69,9 +74,9 @@ export class CheckpointService {
 		if (status.files.length > 0) {
 			await this.git.stash(["-u"]) // Stash tracked and untracked files.
 			return true
-		} else {
-			return false
 		}
+
+		return false
 	}
 
 	private async applyStash() {
@@ -80,9 +85,9 @@ export class CheckpointService {
 		if (stashList.all.length > 0) {
 			await this.git.stash(["apply"]) // Apply the most recent stash.
 			return true
-		} else {
-			return false
 		}
+
+		return false
 	}
 
 	private async popStash() {
@@ -91,9 +96,9 @@ export class CheckpointService {
 		if (stashList.all.length > 0) {
 			await this.git.stash(["pop"]) // Pop the most recent stash.
 			return true
-		} else {
-			return false
 		}
+
+		return false
 	}
 
 	private async ensureBranch(expectedBranch: string) {
