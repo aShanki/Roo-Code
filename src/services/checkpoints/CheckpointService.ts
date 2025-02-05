@@ -72,7 +72,7 @@ export class CheckpointService {
 		const status = await this.git.status()
 
 		if (status.files.length > 0) {
-			await this.git.stash(["-u"]) // Stash tracked and untracked files.
+			await this.git.stash(["-u"]) // Includes tracked and untracked files.
 			return true
 		}
 
@@ -83,7 +83,7 @@ export class CheckpointService {
 		const stashList = await this.git.stashList()
 
 		if (stashList.all.length > 0) {
-			await this.git.stash(["apply"]) // Apply the most recent stash.
+			await this.git.stash(["apply"]) // Applies the most recent stash only.
 			return true
 		}
 
@@ -94,7 +94,7 @@ export class CheckpointService {
 		const stashList = await this.git.stashList()
 
 		if (stashList.all.length > 0) {
-			await this.git.stash(["pop"]) // Pop the most recent stash.
+			await this.git.stash(["pop"]) // Pops the most recent stash only.
 			return true
 		}
 
@@ -102,7 +102,7 @@ export class CheckpointService {
 	}
 
 	private async ensureBranch(expectedBranch: string) {
-		const branch = await this.git.revparse(["--abbrev-ref", "HEAD"]) // git rev-parse --abbrev-ref HEAD
+		const branch = await this.git.revparse(["--abbrev-ref", "HEAD"])
 
 		if (branch.trim() !== expectedBranch) {
 			throw new Error(`Git branch mismatch: expected '${expectedBranch}' but found '${branch}'`)
@@ -121,23 +121,23 @@ export class CheckpointService {
 		for (const file of files.filter((f) => !f.binary)) {
 			const relPath = file.file
 			const absPath = path.join(this.baseDir, relPath)
+
+			// If modified both before and after will generate content.
+			// If added only after will generate content.
+			// If deleted only before will generate content.
 			let beforeContent = ""
 			let afterContent = ""
 
-			// Try to get content from both commits - handles all cases:
-			// - Modified: both will succeed
-			// - Added: only 'to' will succeed
-			// - Deleted: only 'from' will succeed
 			try {
 				beforeContent = await this.git.show([`${from}:${relPath}`])
 			} catch (err) {
-				// File didn't exist in older commit => remains empty.
+				// File doesn't exist in older commit.
 			}
 
 			try {
 				afterContent = await this.git.show([`${to}:${relPath}`])
 			} catch (err) {
-				// File didn't exist in newer commit => remains empty.
+				// File doesn't exist in newer commit.
 			}
 
 			result.push({
@@ -153,76 +153,74 @@ export class CheckpointService {
 		await this.ensureBranch(this.mainBranch)
 
 		// Attempt to stash pending changes (including untracked files).
-		const pendingChanges = await this.pushStash() // git stash -u
+		const pendingChanges = await this.pushStash()
 
 		// Get the latest commit on the hidden branch before we reset it.
-		const latestHash = await this.git.revparse([this.hiddenBranch]) // git rev-parse <hiddenBranch>
+		const latestHash = await this.git.revparse([this.hiddenBranch])
 
-		// Check if there is any diff relative to the last checkpoint.
+		// Check if there is any diff relative to the latest commit.
 		if (!pendingChanges) {
-			const diff = await this.git.diff([latestHash]) // git diff <latestHash>
+			const diff = await this.git.diff([latestHash])
 
 			if (!diff) {
-				this.log(`[saveCheckpoint] No changes relative to previous checkpoint; nothing to commit.`)
+				this.log(`[saveCheckpoint] No changes detected, giving up`)
 				return undefined
 			}
 		}
 
-		await this.git.checkout(this.hiddenBranch) // git checkout <hiddenBranch>
+		await this.git.checkout(this.hiddenBranch)
 
 		const reset = async () => {
-			await this.git.reset(["HEAD", "."]) // git reset HEAD .
-			await this.git.clean([CleanOptions.FORCE, CleanOptions.RECURSIVE]) // git clean -f -d
-			await this.git.reset(["--hard", latestHash]) // git reset --hard <latestHash>
-			await this.git.checkout(this.mainBranch) // git checkout <mainBranch>
-			await this.popStash() // git stash pop
+			await this.git.reset(["HEAD", "."])
+			await this.git.clean([CleanOptions.FORCE, CleanOptions.RECURSIVE])
+			await this.git.reset(["--hard", latestHash])
+			await this.git.checkout(this.mainBranch)
+			await this.popStash()
 		}
 
 		try {
 			// Reset hidden branch to match main and apply the pending changes.
-			await this.git.reset(["--hard", this.mainBranch]) // git reset --hard <mainBranch>
+			await this.git.reset(["--hard", this.mainBranch])
 
-			// Only try to apply stash if we had pending changes.
 			if (pendingChanges) {
-				await this.applyStash() // git stash apply 0
+				await this.applyStash()
 			}
 
 			// Using "-A" ensures that deletions are staged as well.
-			await this.git.add(["-A"]) // git add -A
-			const diff = await this.git.diff([latestHash]) // git diff <latestHash>
+			await this.git.add(["-A"])
+			const diff = await this.git.diff([latestHash])
 
 			if (!diff) {
-				// If the diff is empty and there are no untracked files then we
-				// don't need to commit.
-				this.log(`[saveCheckpoint] Diff is empty, no untracked files`)
+				this.log(`[saveCheckpoint] No changes detected, resetting and giving up`)
 				await reset()
 				return undefined
 			}
 
 			// Otherwise, commit the changes.
-			const status = await this.git.status() // git status
+			const status = await this.git.status()
 			this.log(`[saveCheckpoint] Changes detected, committing ${JSON.stringify(status)}`)
 
+			// Allow empty commits in order to correctly handle deletion of
+			// untracked files (see unit tests for an example of this).
+			// Additionally, skip pre-commit hooks so that they don't slow
+			// things down or tamper with the contents of the commit.
 			const commit = await this.git.commit(message, undefined, {
 				"--allow-empty": null,
-				"--no-verify": null, // Skip pre-commit hooks.
+				"--no-verify": null,
 			})
 
 			await this.git.checkout(this.mainBranch)
 
-			// Only pop stash if we had stashed something earlier.
 			if (pendingChanges) {
-				await this.popStash() // git stash pop
+				await this.popStash()
 			}
 
 			return commit
 		} catch (err) {
 			this.log(`[saveCheckpoint] Failed to save checkpoint: ${err instanceof Error ? err.message : String(err)}`)
 
-			// If we're not on the main branch, we need to trigger a reset
-			// (equivalent to the empty diff case above).
-			// This ensures that we return to the main branch and restore the
-			// pending changes.
+			// If we're not on the main branch then we need to trigger a reset
+			// to return to the main branch and restore it's previous state.
 			const currentBranch = await this.git.revparse(["--abbrev-ref", "HEAD"])
 
 			if (currentBranch.trim() !== this.mainBranch) {
