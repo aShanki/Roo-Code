@@ -12,7 +12,6 @@ import {
 	DropdownMenuItem,
 	DropdownMenuShortcut,
 } from "@/components/ui"
-import { cn } from "@/lib/utils"
 
 type CheckpointMenuProps = {
 	ts: number
