@@ -5,7 +5,9 @@ import path from "path"
 import debug from "debug"
 import simpleGit, { SimpleGit, CleanOptions } from "simple-git"
 
-debug.enable("simple-git")
+if (process.env.NODE_ENV !== "test") {
+	debug.enable("simple-git")
+}
 
 export interface Checkpoint {
 	hash: string
