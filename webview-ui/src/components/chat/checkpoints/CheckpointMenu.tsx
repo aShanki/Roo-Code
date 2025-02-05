@@ -65,15 +65,17 @@ export const CheckpointMenu = ({ ts, commitHash }: CheckpointMenuProps) => {
 }
 
 type CheckpointMenuItemProps = DropdownMenuItemProps & {
-	label: string
-	icon: string
+	label: React.ReactNode
+	icon: "diff-single" | "diff-multiple" | "open-preview" | "history"
 }
 
-const CheckpointMenuItem = ({ label, icon, className, ...props }: CheckpointMenuItemProps) => (
-	<DropdownMenuItem className={cn("flex flex-row-reverse gap-1", className)} {...props}>
-		<div>{label}</div>
-		<DropdownMenuShortcut>
-			<span className={`codicon codicon-${icon}`} />
-		</DropdownMenuShortcut>
+const CheckpointMenuItem = ({ label, icon, ...props }: CheckpointMenuItemProps) => (
+	<DropdownMenuItem {...props}>
+		<div className="flex flex-row-reverse gap-1">
+			<div>{label}</div>
+			<DropdownMenuShortcut>
+				<span className={`codicon codicon-${icon}`} />
+			</DropdownMenuShortcut>
+		</div>
 	</DropdownMenuItem>
 )
