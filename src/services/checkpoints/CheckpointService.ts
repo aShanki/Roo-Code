@@ -280,7 +280,7 @@ export class CheckpointService {
 		}
 
 		await git.addConfig("user.name", "Roo Code")
-		await git.addConfig("user.email", "support@roo.vet")
+		await git.addConfig("user.email", "support@roocode.com")
 
 		if (!isExistingRepo) {
 			// We need at least one file to commit, otherwise the initial
