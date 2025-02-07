@@ -96,7 +96,7 @@ export class CheckpointService {
 		const stashList = await this.git.stashList()
 
 		if (stashList.all.length > 0) {
-			await this.git.stash(["pop"]) // Pops the most recent stash only.
+			await this.git.stash(["pop", "--index"]) // Pops the most recent stash only.
 			return true
 		}
 
@@ -282,7 +282,7 @@ export class CheckpointService {
 		}
 
 		await git.addConfig("user.name", "Roo Code")
-		await git.addConfig("user.email", "support@roo.vet")
+		await git.addConfig("user.email", "support@roocode.com")
 
 		if (!isExistingRepo) {
 			// We need at least one file to commit, otherwise the initial
