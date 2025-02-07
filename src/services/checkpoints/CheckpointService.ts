@@ -5,7 +5,9 @@ import path from "path"
 import debug from "debug"
 import simpleGit, { SimpleGit, CleanOptions } from "simple-git"
 
-debug.enable("simple-git")
+if (process.env.NODE_ENV !== "test") {
+	debug.enable("simple-git")
+}
 
 export interface Checkpoint {
 	hash: string
@@ -94,7 +96,7 @@ export class CheckpointService {
 		const stashList = await this.git.stashList()
 
 		if (stashList.all.length > 0) {
-			await this.git.stash(["pop"]) // Pops the most recent stash only.
+			await this.git.stash(["pop", "--index"]) // Pops the most recent stash only.
 			return true
 		}
 

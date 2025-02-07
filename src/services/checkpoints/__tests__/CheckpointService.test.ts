@@ -135,6 +135,61 @@ describe("CheckpointService", () => {
 			expect(await fs.readFile(testFile, "utf-8")).toBe("Hello, world!")
 		})
 
+		it("preserves workspace and index state after saving checkpoint", async () => {
+			// Create three files with different states: staged, unstaged, and mixed.
+			const unstagedFile = path.join(service.baseDir, "unstaged.txt")
+			const stagedFile = path.join(service.baseDir, "staged.txt")
+			const mixedFile = path.join(service.baseDir, "mixed.txt")
+
+			await fs.writeFile(unstagedFile, "Initial unstaged")
+			await fs.writeFile(stagedFile, "Initial staged")
+			await fs.writeFile(mixedFile, "Initial mixed")
+			await git.add(["."])
+			const result = await git.commit("Add initial files")
+			expect(result?.commit).toBeTruthy()
+
+			await fs.writeFile(unstagedFile, "Modified unstaged")
+
+			await fs.writeFile(stagedFile, "Modified staged")
+			await git.add([stagedFile])
+
+			await fs.writeFile(mixedFile, "Modified mixed - staged")
+			await git.add([mixedFile])
+			await fs.writeFile(mixedFile, "Modified mixed - unstaged")
+
+			// Save checkpoint.
+			const commit = await service.saveCheckpoint("Test checkpoint")
+			expect(commit?.commit).toBeTruthy()
+
+			// Verify workspace state is preserved.
+			const status = await git.status()
+
+			// All files should be modified.
+			expect(status.modified).toContain("unstaged.txt")
+			expect(status.modified).toContain("staged.txt")
+			expect(status.modified).toContain("mixed.txt")
+
+			// Only staged and mixed files should be staged.
+			expect(status.staged).not.toContain("unstaged.txt")
+			expect(status.staged).toContain("staged.txt")
+			expect(status.staged).toContain("mixed.txt")
+
+			// Verify file contents.
+			expect(await fs.readFile(unstagedFile, "utf-8")).toBe("Modified unstaged")
+			expect(await fs.readFile(stagedFile, "utf-8")).toBe("Modified staged")
+			expect(await fs.readFile(mixedFile, "utf-8")).toBe("Modified mixed - unstaged")
+
+			// Verify staged changes (--cached shows only staged changes).
+			const stagedDiff = await git.diff(["--cached", "mixed.txt"])
+			expect(stagedDiff).toContain("-Initial mixed")
+			expect(stagedDiff).toContain("+Modified mixed - staged")
+
+			// Verify unstaged changes (shows working directory changes).
+			const unstagedDiff = await git.diff(["mixed.txt"])
+			expect(unstagedDiff).toContain("-Modified mixed - staged")
+			expect(unstagedDiff).toContain("+Modified mixed - unstaged")
+		})
+
 		it("does not create a checkpoint if there are no pending changes", async () => {
 			await fs.writeFile(testFile, "Ahoy, world!")
 			const commit = await service.saveCheckpoint("First checkpoint")
